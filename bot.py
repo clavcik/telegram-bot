@@ -53,7 +53,7 @@ all_commands = {
 }
 
 def normalize_text(text):
-    return text.replace('ё', 'e')
+    return text.replace('ё', 'е')
 
 def format_commands_list():
     commands_list = list(all_commands.keys())
@@ -106,58 +106,49 @@ async def rp_action(message: Message):
         if not has_reply and not has_mentions:
             return
         
-        # Ищем команду в тексте
+        # Ищем команду в тексте (сначала без нормализации)
         matched_command = None
         
-        # ДЛЯ ОТЛАДКИ: логируем входящее сообщение
-        logging.info(f"Получено сообщение: '{original_text}'")
-        
         for command in all_commands.keys():
-            # Проверяем точное совпадение команды
-            words = text.split()
-            if command in words:
-                matched_command = command
-                logging.info(f"Найдена команда: '{command}' в словах: {words}")
-                break
-            # Проверяем команду в начале или конце текста
-            elif (text.startswith(command + " ") or 
-                  text.endswith(" " + command) or 
-                  text == command):
-                matched_command = command
-                logging.info(f"Найдена команда по границам: '{command}'")
-                break
+            # Сначала проверяем оригинальную команду (с ё)
+            if command in text:
+                # Убедимся, что это не часть другого слова
+                words = text.split()
+                if command in words:
+                    matched_command = command
+                    break
+                elif (text.startswith(command + " ") or 
+                      text.endswith(" " + command) or 
+                      text == command):
+                    matched_command = command
+                    break
         
-        # Если не нашли, пробуем с нормализацией ё->е
+        # Если не нашли с ё, пробуем с нормализацией
         if not matched_command:
             normalized_text = normalize_text(text)
-            logging.info(f"Нормализованный текст: '{normalized_text}'")
-            
             for command in all_commands.keys():
                 normalized_command = normalize_text(command.lower())
-                normalized_words = normalized_text.split()
                 
-                if normalized_command in normalized_words:
-                    matched_command = command
-                    logging.info(f"Найдена команда после нормализации: '{command}'")
-                    break
-                elif (normalized_text.startswith(normalized_command + " ") or 
-                      normalized_text.endswith(" " + normalized_command) or 
-                      normalized_text == normalized_command):
-                    matched_command = command
-                    logging.info(f"Найдена команда по границам после нормализации: '{command}'")
-                    break
+                if normalized_command in normalized_text:
+                    words = normalized_text.split()
+                    if normalized_command in words:
+                        matched_command = command
+                        break
+                    elif (normalized_text.startswith(normalized_command + " ") or 
+                          normalized_text.endswith(" " + normalized_command) or 
+                          normalized_text == normalized_command):
+                        matched_command = command
+                        break
 
         if matched_command:
             emoji = all_commands[matched_command]["emoji"]
             past_tense = all_commands[matched_command]["past"]
-            logging.info(f"Используется прошедшее время: '{past_tense}' для команды '{matched_command}'")
             
             # 1. Проверяем ответ на сообщение (приоритет)
             if message.reply_to_message:
                 target = message.reply_to_message.from_user
-                response_text = f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}"
-                await message.reply(response_text)
-                logging.info(f"Отправлен ответ: {response_text}")
+                await message.reply(
+                    f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                 return
             
             # 2. Проверяем упоминания в тексте (@юзернейм)
@@ -167,24 +158,20 @@ async def rp_action(message: Message):
                     if entity.type == "mention":
                         mention_text = original_text[entity.offset:entity.offset + entity.length]
                         if mention_text.startswith('@'):
-                            response_text = f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}"
-                            await message.reply(response_text)
-                            logging.info(f"Отправлен ответ: {response_text}")
+                            await message.reply(
+                                f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
                             return
                     
-                    # Обработка текстовых упоминаний
+                    # Обработка текстовых упоминаний (когда Telegram предоставляет User объект)
                     elif entity.type == "text_mention":
                         if hasattr(entity, 'user') and entity.user:
                             target = entity.user
-                            response_text = f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}"
-                            await message.reply(response_text)
-                            logging.info(f"Отправлен ответ: {response_text}")
+                            await message.reply(
+                                f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                             return
-        else:
-            logging.warning(f"Команда не найдена в тексте: '{original_text}'")
 
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
+        logging.warning(f"Ошибка: {e}")
 
 async def main():
     logging.info("🚀 Бот запущен!")
