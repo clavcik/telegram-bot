@@ -98,6 +98,14 @@ async def rp_action(message: Message):
         original_text = message.text.strip() if message.text else ""
         text = original_text.lower()
         
+        # Сначала проверяем наличие ответа на сообщение или упоминаний
+        has_reply = message.reply_to_message is not None
+        has_mentions = bool(message.entities)
+        
+        # Если нет ответа и нет упоминаний - сразу выходим
+        if not has_reply and not has_mentions:
+            return
+        
         # Ищем команду в тексте (сначала без нормализации)
         matched_command = None
         
@@ -145,13 +153,11 @@ async def rp_action(message: Message):
             
             # 2. Проверяем упоминания в тексте (@юзернейм)
             elif message.entities:
-                has_mention = False
                 for entity in message.entities:
                     # Обработка упоминаний через @username
                     if entity.type == "mention":
                         mention_text = original_text[entity.offset:entity.offset + entity.length]
                         if mention_text.startswith('@'):
-                            has_mention = True
                             await message.reply(
                                 f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
                             return
@@ -159,18 +165,10 @@ async def rp_action(message: Message):
                     # Обработка текстовых упоминаний (когда Telegram предоставляет User объект)
                     elif entity.type == "text_mention":
                         if hasattr(entity, 'user') and entity.user:
-                            has_mention = True
                             target = entity.user
                             await message.reply(
                                 f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                             return
-                
-                # Если есть команда, но нет упоминаний - игнорируем
-                if not has_mention:
-                    return
-            
-            # 3. Если нет ответа и нет упоминаний - игнорируем команду
-            return
 
     except Exception as e:
         logging.warning(f"Ошибка: {e}")
@@ -181,4 +179,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
