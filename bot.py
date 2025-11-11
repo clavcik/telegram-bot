@@ -98,48 +98,39 @@ async def rp_action(message: Message):
         original_text = message.text.strip() if message.text else ""
         text = original_text.lower()
         
-        # Сначала проверяем наличие ответа на сообщение или упоминаний
-        has_reply = message.reply_to_message is not None
-        has_mentions = bool(message.entities)
-        
-        # Если нет ответа и нет упоминаний - сразу выходим
-        if not has_reply and not has_mentions:
-            return
-        
-        # Ищем команду в тексте (сначала без нормализации)
+        # Сначала ищем команду в тексте
         matched_command = None
         
         for command in all_commands.keys():
-            # Сначала проверяем оригинальную команду (с ё)
-            if command in text:
-                # Убедимся, что это не часть другого слова
-                words = text.split()
-                if command in words:
-                    matched_command = command
-                    break
-                elif (text.startswith(command + " ") or 
-                      text.endswith(" " + command) or 
-                      text == command):
-                    matched_command = command
-                    break
+            # Проверяем точное совпадение команды
+            words = text.split()
+            if command in words:
+                matched_command = command
+                break
+            # Проверяем команду в начале или конце текста
+            elif (text.startswith(command + " ") or 
+                  text.endswith(" " + command) or 
+                  text == command):
+                matched_command = command
+                break
         
-        # Если не нашли с ё, пробуем с нормализацией
+        # Если не нашли, пробуем с нормализацией ё->е
         if not matched_command:
             normalized_text = normalize_text(text)
             for command in all_commands.keys():
                 normalized_command = normalize_text(command.lower())
+                normalized_words = normalized_text.split()
                 
-                if normalized_command in normalized_text:
-                    words = normalized_text.split()
-                    if normalized_command in words:
-                        matched_command = command
-                        break
-                    elif (normalized_text.startswith(normalized_command + " ") or 
-                          normalized_text.endswith(" " + normalized_command) or 
-                          normalized_text == normalized_command):
-                        matched_command = command
-                        break
+                if normalized_command in normalized_words:
+                    matched_command = command
+                    break
+                elif (normalized_text.startswith(normalized_command + " ") or 
+                      normalized_text.endswith(" " + normalized_command) or 
+                      normalized_text == normalized_command):
+                    matched_command = command
+                    break
 
+        # Если команда найдена, проверяем условия использования
         if matched_command:
             emoji = all_commands[matched_command]["emoji"]
             past_tense = all_commands[matched_command]["past"]
@@ -151,24 +142,35 @@ async def rp_action(message: Message):
                     f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                 return
             
-            # 2. Проверяем упоминания в тексте (@юзернейм)
+            # 2. Проверяем упоминания в тексте (@юзернейм) ТОЛЬКО в текущем сообщении
             elif message.entities:
+                has_valid_mention = False
                 for entity in message.entities:
                     # Обработка упоминаний через @username
                     if entity.type == "mention":
                         mention_text = original_text[entity.offset:entity.offset + entity.length]
                         if mention_text.startswith('@'):
+                            has_valid_mention = True
                             await message.reply(
                                 f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
                             return
                     
-                    # Обработка текстовых упоминаний (когда Telegram предоставляет User объект)
+                    # Обработка текстовых упоминаний
                     elif entity.type == "text_mention":
                         if hasattr(entity, 'user') and entity.user:
+                            has_valid_mention = True
                             target = entity.user
                             await message.reply(
                                 f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                             return
+                
+                # Если команда есть, но нет валидных упоминаний - игнорируем
+                if not has_valid_mention:
+                    return
+            
+            # 3. Если команда найдена, но нет ни ответа, ни упоминаний - игнорируем
+            else:
+                return
 
     except Exception as e:
         logging.warning(f"Ошибка: {e}")
