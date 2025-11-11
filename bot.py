@@ -98,79 +98,98 @@ async def rp_action(message: Message):
         original_text = message.text.strip() if message.text else ""
         text = original_text.lower()
         
-        # Сначала ищем команду в тексте
-        matched_command = None
-        
-        for command in all_commands.keys():
-            # Проверяем точное совпадение команды
-            words = text.split()
-            if command in words:
-                matched_command = command
-                break
-            # Проверяем команду в начале или конце текста
-            elif (text.startswith(command + " ") or 
-                  text.endswith(" " + command) or 
-                  text == command):
-                matched_command = command
-                break
-        
-        # Если не нашли, пробуем с нормализацией ё->е
-        if not matched_command:
-            normalized_text = normalize_text(text)
-            for command in all_commands.keys():
-                normalized_command = normalize_text(command.lower())
-                normalized_words = normalized_text.split()
-                
-                if normalized_command in normalized_words:
-                    matched_command = command
-                    break
-                elif (normalized_text.startswith(normalized_command + " ") or 
-                      normalized_text.endswith(" " + normalized_command) or 
-                      normalized_text == normalized_command):
-                    matched_command = command
-                    break
-
-        # Если команда найдена, проверяем условия использования
-        if matched_command:
-            emoji = all_commands[matched_command]["emoji"]
-            past_tense = all_commands[matched_command]["past"]
+        # 1. Проверяем ответ на сообщение (приоритет)
+        if message.reply_to_message:
+            # Проверяем, что сообщение содержит ТОЛЬКО команду (без лишнего текста)
+            matched_command = None
+            clean_text = text.strip()
             
-            # 1. Проверяем ответ на сообщение (приоритет)
-            if message.reply_to_message:
+            for command in all_commands.keys():
+                if clean_text == command:
+                    matched_command = command
+                    break
+            
+            # Если не нашли с ё, пробуем с нормализацией
+            if not matched_command:
+                normalized_text = normalize_text(clean_text)
+                for command in all_commands.keys():
+                    normalized_command = normalize_text(command.lower())
+                    if normalized_text == normalized_command:
+                        matched_command = command
+                        break
+
+            if matched_command:
+                emoji = all_commands[matched_command]["emoji"]
+                past_tense = all_commands[matched_command]["past"]
                 target = message.reply_to_message.from_user
                 await message.reply(
                     f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
                 return
-            
-            # 2. Проверяем упоминания в тексте (@юзернейм) ТОЛЬКО в текущем сообщении
-            elif message.entities:
-                has_valid_mention = False
-                for entity in message.entities:
-                    # Обработка упоминаний через @username
-                    if entity.type == "mention":
-                        mention_text = original_text[entity.offset:entity.offset + entity.length]
-                        if mention_text.startswith('@'):
-                            has_valid_mention = True
-                            await message.reply(
-                                f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
-                            return
-                    
-                    # Обработка текстовых упоминаний
-                    elif entity.type == "text_mention":
-                        if hasattr(entity, 'user') and entity.user:
-                            has_valid_mention = True
-                            target = entity.user
-                            await message.reply(
-                                f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
-                            return
+        
+        # 2. Проверяем упоминания в тексте (@юзернейм)
+        elif message.entities:
+            # Ищем упоминания и команды рядом с ними
+            for entity in message.entities:
+                # Обработка упоминаний через @username
+                if entity.type == "mention":
+                    mention_text = original_text[entity.offset:entity.offset + entity.length]
+                    if mention_text.startswith('@'):
+                        # Ищем команду непосредственно до или после упоминания
+                        mention_start = entity.offset
+                        mention_end = entity.offset + entity.length
+                        
+                        # Текст до упоминания
+                        text_before = original_text[:mention_start].strip().lower()
+                        # Текст после упоминания  
+                        text_after = original_text[mention_end:].strip().lower()
+                        
+                        # Проверяем команду перед упоминанием
+                        for command in all_commands.keys():
+                            if text_before.endswith(command) or normalize_text(text_before).endswith(normalize_text(command)):
+                                emoji = all_commands[command]["emoji"]
+                                past_tense = all_commands[command]["past"]
+                                await message.reply(
+                                    f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
+                                return
+                        
+                        # Проверяем команду после упоминания
+                        for command in all_commands.keys():
+                            if text_after.startswith(command) or normalize_text(text_after).startswith(normalize_text(command)):
+                                emoji = all_commands[command]["emoji"]
+                                past_tense = all_commands[command]["past"]
+                                await message.reply(
+                                    f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} {mention_text} {emoji}")
+                                return
                 
-                # Если команда есть, но нет валидных упоминаний - игнорируем
-                if not has_valid_mention:
-                    return
-            
-            # 3. Если команда найдена, но нет ни ответа, ни упоминаний - игнорируем
-            else:
-                return
+                # Обработка текстовых упоминаний
+                elif entity.type == "text_mention":
+                    if hasattr(entity, 'user') and entity.user:
+                        target = entity.user
+                        mention_start = entity.offset
+                        mention_end = entity.offset + entity.length
+                        
+                        # Текст до упоминания
+                        text_before = original_text[:mention_start].strip().lower()
+                        # Текст после упоминания  
+                        text_after = original_text[mention_end:].strip().lower()
+                        
+                        # Проверяем команду перед упоминанием
+                        for command in all_commands.keys():
+                            if text_before.endswith(command) or normalize_text(text_before).endswith(normalize_text(command)):
+                                emoji = all_commands[command]["emoji"]
+                                past_tense = all_commands[command]["past"]
+                                await message.reply(
+                                    f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
+                                return
+                        
+                        # Проверяем команду после упоминания
+                        for command in all_commands.keys():
+                            if text_after.startswith(command) or normalize_text(text_after).startswith(normalize_text(command)):
+                                emoji = all_commands[command]["emoji"]
+                                past_tense = all_commands[command]["past"]
+                                await message.reply(
+                                    f"{emoji} @{message.from_user.username or message.from_user.first_name} {past_tense} @{target.username or target.first_name} {emoji}")
+                                return
 
     except Exception as e:
         logging.warning(f"Ошибка: {e}")
