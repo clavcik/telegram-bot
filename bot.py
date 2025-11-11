@@ -48,6 +48,7 @@ def format_commands_list():
     text += "Напиши команду в ответ на сообщение пользователя\n"
     text += "Пример: <code>обнять</code> (в ответ на сообщение)\n\n"
     text += "✨ Бот автоматически отреагирует на любую команду из списка!"
+    text += "\n\nℹ️ <i>Команды с буквой 'ё' работают и с 'е'</i>"
     return text
 
 @dp.message(Command('help', prefix='!'))
@@ -61,6 +62,7 @@ async def help_command(message: Message):
 @dp.message()
 async def rp_action(message: Message):
     try:
+        # Пропускаем служебные сообщения
         if message.left_chat_member or message.new_chat_members:
             return
             
@@ -68,9 +70,11 @@ async def rp_action(message: Message):
         text = original_text.lower()
         normalized_text = normalize_text(text)
         
+        # Ищем команду в тексте
         matched_command = None
         for command in all_commands.keys():
             normalized_command = normalize_text(command.lower())
+            
             if normalized_command in normalized_text:
                 words = normalized_text.split()
                 if normalized_command in words:
@@ -84,33 +88,43 @@ async def rp_action(message: Message):
 
         if matched_command:
             emoji = all_commands[matched_command]
+            
+            # 1. Проверяем ответ на сообщение (приоритет)
             if message.reply_to_message:
                 target = message.reply_to_message.from_user
                 await message.reply(
                     f"{emoji} Пользователь @{message.from_user.username or message.from_user.first_name} {matched_command} @{target.username or target.first_name} {emoji}")
-            else:
-                entities = message.entities or []
-                target = None
-                for e in entities:
-                    if e.type == 'mention' or e.type == 'text_mention':
-                        if hasattr(e, 'user'):
-                            target = e.user
-                        break
-                
-                if target:
-                    await message.reply(
-                        f"{emoji} Пользователь @{message.from_user.username or message.from_user.first_name} {matched_command} @{target.username or target.first_name} {emoji}")
-                else:
-                    await message.reply(
-                        f"{emoji} Чтобы использовать команду, ответь на сообщение пользователя или упомяни его через @ {emoji}")
+                return
+            
+            # 2. Проверяем упоминания в тексте
+            elif message.entities:
+                for entity in message.entities:
+                    # Обработка упоминаний через @username
+                    if entity.type == "mention":
+                        mention_text = original_text[entity.offset:entity.offset + entity.length]
+                        if mention_text.startswith('@'):
+                            await message.reply(
+                                f"{emoji} Пользователь @{message.from_user.username or message.from_user.first_name} {matched_command} {mention_text} {emoji}")
+                            return
+                    
+                    # Обработка текстовых упоминаний (когда Telegram предоставляет User объект)
+                    elif entity.type == "text_mention":
+                        if hasattr(entity, 'user') and entity.user:
+                            target = entity.user
+                            await message.reply(
+                                f"{emoji} Пользователь @{message.from_user.username or message.from_user.first_name} {matched_command} @{target.username or target.first_name} {emoji}")
+                            return
+            
+            # 3. Если нет ответа и нет упоминаний
+            await message.reply(
+                f"{emoji} Чтобы использовать команду, ответь на сообщение пользователя или упомяни его через @ {emoji}")
 
     except Exception as e:
         logging.warning(f"Ошибка: {e}")
 
 async def main():
-    logging.info("🚀 Бот запущен на VPS!")
+    logging.info("🚀 Бот запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
