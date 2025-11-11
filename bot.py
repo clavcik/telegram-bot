@@ -78,8 +78,6 @@ def format_commands_list():
     text += "1. Ответь на сообщение пользователя с командой\n"
     text += "2. Употреби команду с @юзернейм\n"
     text += "Пример: <code>обнять @username</code>\n\n"
-    text += "✨ Бот не реагирует на команды с обычными именами!"
-    text += "\n\nℹ️ <i>Команды с буквой 'ё' работают и с 'е'</i>"
     return text
 
 @dp.message(Command('help', prefix='!'))
@@ -183,3 +181,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
