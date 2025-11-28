@@ -1,16 +1,22 @@
-import logging
 import asyncio
+import logging
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Command
+from dotenv import load_dotenv
 
-# --- Твой токен ---
-TOKEN = "8321577382:AAF8sPv8N41WUk1Sa8ZMbPIn6sQznkGzk6Q"
+# Загружаем .env
+load_dotenv()
+
+# Получаем токен
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise SystemExit("❌ ERROR: BOT_TOKEN не найден в .env")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
 # --- Команды RP без наращивания (а) ---
 all_commands = {
     "обнять": {"emoji": "🤗", "past": "обнял"},
@@ -119,4 +125,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+
     asyncio.run(main())
